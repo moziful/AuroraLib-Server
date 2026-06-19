@@ -8,6 +8,7 @@ const axios = require('axios');
 const FormData = require('form-data');
 const port = process.env.PORT || 5000;
 const uri = `mongodb+srv://${process.env.MONGODB_URI_USER}:${process.env.MONGODB_URI_PASSWORD}@cluster0.1oucwva.mongodb.net/?appName=Cluster0`;
+const jwt = require('jsonwebtoken');
 
 const client = new MongoClient(uri, {
     serverApi: {
@@ -17,7 +18,28 @@ const client = new MongoClient(uri, {
     }
 });
 
-app.use(cors());
+const verifyToken = (req, res, next) => {
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+        return res.status(401).json({ message: "Unauthorized: No token provided" });
+    }
+
+    const token = authHeader.split(' ')[1];
+
+    jwt.verify(token, process.env.ACCESS_TOKEN_SECRET, (err, decoded) => {
+        if (err) return res.status(403).json({ message: "Forbidden: Invalid token" });
+
+        // This is the crucial step: 
+        // It injects the user info into the request object!
+        req.user = decoded;
+        next();
+    });
+};
+
+app.use(cors({
+    origin: "http://localhost:3000",
+    credentials: true,
+}));
 app.use(express.json());
 
 async function run() {
@@ -33,36 +55,76 @@ async function run() {
             const result = await cursor.toArray();
             res.send(result);
         });
+        app.get('/books/:email', async (req, res) => {
+            const cursor = allBooks.find({ writerEmail: req.params.email });
+            const result = await cursor.toArray();
+            res.send(result);
+        });
 
-        app.post('/books', async (req, res) => {
-            const {
-                title, description, price,
-                genre, coverImage,
-                writerName, writerEmail,
-                status, isFeatured,
-            } = req.body;
+        app.post("/books", verifyToken, async (req, res) => {
+            try {
+                if (!req.user) {
+                    return res.status(401).json({
+                        success: false,
+                        message: "Unauthorized",
+                    });
+                }
 
-            if (!title || !genre || !writerName || !writerEmail) {
-                return res.status(400).json({
+                const { role, email } = req.user;
+
+                if (role !== "writer") {
+                    return res.status(403).json({
+                        success: false,
+                        message: "Only writers can add books",
+                    });
+                }
+
+                const {
+                    title,
+                    description,
+                    price,
+                    genre,
+                    coverImage,
+                    writerName,
+                    writerEmail,
+                    status,
+                    isFeatured,
+                } = req.body;
+
+                if (!title || !genre || !writerName || !writerEmail) {
+                    return res.status(400).json({
+                        success: false,
+                        message: "title, genre, writerName, and writerEmail are required.",
+                    });
+                }
+
+                const book = {
+                    title,
+                    description: description || "",
+                    price: parseFloat(price) || 0,
+                    genre,
+                    coverImage: coverImage || "",
+                    writerName,
+                    writerEmail: writerEmail || email,
+                    status: status || "Available",
+                    isFeatured: Boolean(isFeatured),
+                    bookmarks: [],
+                    createdAt: new Date().toISOString(),
+                };
+
+                const result = await allBooks.insertOne(book);
+
+                return res.status(201).json({
+                    success: true,
+                    insertedId: result.insertedId,
+                });
+            } catch (error) {
+                console.error("POST /books failed:", error);
+                return res.status(500).json({
                     success: false,
-                    message: 'title, genre, writerName, and writerEmail are required.',
+                    message: "Failed to add book",
                 });
             }
-            const book = {
-                title,
-                description: description || '',
-                price: parseFloat(price) || 0,
-                genre,
-                coverImage: coverImage || '',
-                writerName,
-                writerEmail,
-                status: status || 'Available',
-                isFeatured: Boolean(isFeatured),
-                bookmarks: [],
-                createdAt: new Date().toISOString(),
-            };
-            const result = await allBooks.insertOne(book);
-            res.status(201).json({ success: true, insertedId: result.insertedId });
         });
         const upload = multer({ storage: multer.memoryStorage() });
         app.post('/api/upload-image', upload.single('image'), async (req, res) => {
