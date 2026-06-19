@@ -23,6 +23,13 @@ async function run() {
         await client.connect();
 
         //Here we will get data.
+        const db = client.db('AuroraLib');
+        const allBooks = db.collection('books');
+        app.get('/books', async (req, res) => {
+            const cursor = allBooks.find();
+            const result = await cursor.toArray();
+            res.send(result);
+        });
 
         // Send a ping to confirm a successful connection
         await client.db("admin").command({ ping: 1 });
