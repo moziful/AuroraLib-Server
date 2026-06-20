@@ -9,6 +9,15 @@ const FormData = require('form-data');
 const port = process.env.PORT || 5000;
 const uri = `mongodb+srv://${process.env.MONGODB_URI_USER}:${process.env.MONGODB_URI_PASSWORD}@cluster0.1oucwva.mongodb.net/?appName=Cluster0`;
 const jwt = require('jsonwebtoken');
+const jwksClient = require('jwks-rsa');
+
+// Better Auth JWKS client — fetches the public key from your Next.js frontend.
+// No shared secret needed; the backend trusts Better Auth's cryptographic signature.
+const jwks = jwksClient({
+    jwksUri: `${process.env.CLIENT_URL}/api/auth/jwks`,
+    cache: true,
+    cacheMaxAge: 10 * 60 * 1000, // 10 minutes
+});
 
 const client = new MongoClient(uri, {
     serverApi: {
@@ -18,7 +27,7 @@ const client = new MongoClient(uri, {
     }
 });
 
-const verifyToken = (req, res, next) => {
+const verifyToken = async (req, res, next) => {
     const authHeader = req.headers.authorization;
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
         return res.status(401).json({ message: "Unauthorized: No token provided" });
@@ -26,14 +35,23 @@ const verifyToken = (req, res, next) => {
 
     const token = authHeader.split(' ')[1];
 
-    jwt.verify(token, process.env.ACCESS_TOKEN_SECRET, (err, decoded) => {
-        if (err) return res.status(403).json({ message: "Forbidden: Invalid token" });
+    try {
+        // Decode the header to get the key ID (kid)
+        const decoded = jwt.decode(token, { complete: true });
+        const kid = decoded?.header?.kid;
 
-        // This is the crucial step: 
-        // It injects the user info into the request object!
-        req.user = decoded;
+        // Fetch the matching public key from Better Auth's JWKS endpoint
+        const signingKey = await jwks.getSigningKey(kid);
+        const publicKey = signingKey.getPublicKey();
+
+        // Verify the token signature using the public key
+        const payload = jwt.verify(token, publicKey, { algorithms: ['RS256', 'ES256'] });
+        req.user = payload;
         next();
-    });
+    } catch (err) {
+        console.error('[verifyToken] error:', err.message);
+        return res.status(403).json({ message: "Forbidden: Invalid or expired token" });
+    }
 };
 
 const allowedOrigins = [
