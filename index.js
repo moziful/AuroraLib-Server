@@ -36,10 +36,25 @@ const verifyToken = (req, res, next) => {
     });
 };
 
+const allowedOrigins = [
+    "http://localhost:3000",
+    process.env.CLIENT_URL,
+].filter(Boolean);
+
 app.use(cors({
-    origin: process.env.CLIENT_URL || "http://localhost:3000",
+    origin: (origin, callback) => {
+        // Allow requests with no origin (e.g. curl, Postman, server-to-server)
+        if (!origin) return callback(null, true);
+        if (allowedOrigins.includes(origin)) {
+            return callback(null, true);
+        }
+        return callback(new Error(`CORS: Origin '${origin}' not allowed`));
+    },
     credentials: true,
+    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization'],
 }));
+
 app.use(express.json());
 
 async function run() {
@@ -132,8 +147,14 @@ async function run() {
                 if (!req.file) {
                     return res.status(400).json({ success: false, message: 'No image file provided.' });
                 }
+
+                if (!process.env.IMAGE_BB_API_KEY) {
+                    return res.status(500).json({ success: false, message: 'ImgBB API key is not configured on the server.' });
+                }
+
+                const base64Image = req.file.buffer.toString('base64');
                 const form = new FormData();
-                form.append('image', req.file.buffer.toString('base64'));
+                form.append('image', base64Image);
 
                 const response = await axios.post(
                     `https://api.imgbb.com/1/upload?key=${process.env.IMAGE_BB_API_KEY}`,
@@ -141,6 +162,14 @@ async function run() {
                     { headers: form.getHeaders() }
                 );
                 const data = response.data;
+
+                if (!data.success) {
+                    return res.status(502).json({
+                        success: false,
+                        message: data?.error?.message || 'ImgBB upload failed.',
+                    });
+                }
+
                 res.json({
                     success: true,
                     url: data.data.url,
@@ -149,10 +178,11 @@ async function run() {
                     thumb_url: data.data.thumb?.url || null,
                 });
             } catch (error) {
-                console.error('ImageBB upload error:', error?.response?.data || error.message);
+                const errMsg = error?.response?.data?.error?.message || error.message || 'Image upload failed.';
+                console.error('ImageBB upload error:', errMsg, error?.response?.data || '');
                 res.status(500).json({
                     success: false,
-                    message: error?.response?.data?.error?.message || 'Image upload failed.',
+                    message: errMsg,
                 });
             }
         });
