@@ -2,7 +2,7 @@ const express = require('express');
 const app = express();
 const cors = require('cors');
 require('dotenv').config();
-const { MongoClient, ServerApiVersion } = require('mongodb');
+const { MongoClient, ServerApiVersion, ObjectId } = require('mongodb');
 const multer = require('multer');
 const axios = require('axios');
 const FormData = require('form-data');
@@ -79,12 +79,28 @@ async function run() {
             const result = await cursor.toArray();
             res.send(result);
         });
-        app.get('/books/:email', async (req, res) => {
-            const cursor = allBooks.find({ writerEmail: req.params.email });
-            const result = await cursor.toArray();
-            res.send(result);
+        app.get('/books/email/:email', async (req, res) => {
+            try {
+                const cursor = allBooks.find({ writerEmail: req.params.email });
+                const result = await cursor.toArray();
+                res.send(result);
+            } catch (err) {
+                console.error("Database error:", err);
+                res.status(500).json({ message: "Server error" });
+            }
         });
-
+        app.get('/books/:id', async (req, res) => {
+            try {
+                const book = await allBooks.findOne({ _id: new ObjectId(req.params.id) });
+                if (!book) {
+                    return res.status(404).json({ message: "Book not found" });
+                }
+                res.send(book);
+            } catch (err) {
+                console.error("Database error:", err);
+                res.status(500).json({ message: "Server error" });
+            }
+        });
         app.post("/books", verifyToken, async (req, res) => {
             try {
                 if (!req.user) {
@@ -198,7 +214,7 @@ async function run() {
 
         // Send a ping to confirm a successful connection
         // await client.db("admin").command({ ping: 1 });
-        console.log("Pinged your deployment. You successfully connected to MongoDB!");
+        // console.log("Pinged your deployment. You successfully connected to MongoDB!");
     } finally {
         // Ensures that the client will close when you finish/error
         // await client.close();
