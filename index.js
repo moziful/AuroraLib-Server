@@ -193,6 +193,89 @@ async function run() {
                 });
             }
         });
+
+        // UPDATE BOOK DETAILS
+        app.put("/books/:id", verifyToken, async (req, res) => {
+            try {
+                if (!req.user || req.user.role !== "writer") {
+                    return res.status(403).json({ success: false, message: "Only writers can update books" });
+                }
+                const id = req.params.id;
+                const filter = { _id: new ObjectId(id) };
+                
+                // Verify ownership
+                const existingBook = await allBooks.findOne(filter);
+                if (!existingBook) return res.status(404).json({ success: false, message: "Book not found" });
+                if (existingBook.writerEmail !== req.user.email) {
+                    return res.status(403).json({ success: false, message: "You can only edit your own books" });
+                }
+
+                const { title, description, price, genre, coverImage, status } = req.body;
+                const updateDoc = {
+                    $set: {
+                        title,
+                        description: description || "",
+                        price: parseFloat(price) || 0,
+                        genre,
+                        coverImage,
+                        status: status || "Available",
+                    },
+                };
+                const result = await allBooks.updateOne(filter, updateDoc);
+                res.json({ success: true, modifiedCount: result.modifiedCount });
+            } catch (error) {
+                console.error("PUT /books/:id failed:", error);
+                res.status(500).json({ success: false, message: "Failed to update book" });
+            }
+        });
+
+        // UPDATE BOOK STATUS
+        app.patch("/books/:id/status", verifyToken, async (req, res) => {
+            try {
+                if (!req.user || req.user.role !== "writer") {
+                    return res.status(403).json({ success: false, message: "Only writers can update status" });
+                }
+                const id = req.params.id;
+                const filter = { _id: new ObjectId(id) };
+                
+                const existingBook = await allBooks.findOne(filter);
+                if (!existingBook) return res.status(404).json({ success: false, message: "Book not found" });
+                if (existingBook.writerEmail !== req.user.email) {
+                    return res.status(403).json({ success: false, message: "You can only edit your own books" });
+                }
+
+                const { status } = req.body;
+                const updateDoc = { $set: { status } };
+                const result = await allBooks.updateOne(filter, updateDoc);
+                res.json({ success: true, modifiedCount: result.modifiedCount });
+            } catch (error) {
+                console.error("PATCH /books/:id/status failed:", error);
+                res.status(500).json({ success: false, message: "Failed to update status" });
+            }
+        });
+
+        // DELETE BOOK
+        app.delete("/books/:id", verifyToken, async (req, res) => {
+            try {
+                if (!req.user || req.user.role !== "writer") {
+                    return res.status(403).json({ success: false, message: "Only writers can delete books" });
+                }
+                const id = req.params.id;
+                const filter = { _id: new ObjectId(id) };
+                
+                const existingBook = await allBooks.findOne(filter);
+                if (!existingBook) return res.status(404).json({ success: false, message: "Book not found" });
+                if (existingBook.writerEmail !== req.user.email) {
+                    return res.status(403).json({ success: false, message: "You can only delete your own books" });
+                }
+
+                const result = await allBooks.deleteOne(filter);
+                res.json({ success: true, deletedCount: result.deletedCount });
+            } catch (error) {
+                console.error("DELETE /books/:id failed:", error);
+                res.status(500).json({ success: false, message: "Failed to delete book" });
+            }
+        });
         const upload = multer({ storage: multer.memoryStorage() });
         app.post('/api/upload-image', upload.single('image'), async (req, res) => {
             try {
