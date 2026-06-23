@@ -74,6 +74,7 @@ async function run() {
         //Here we will get data.
         const db = client.db('AuroraLib');
         const allBooks = db.collection('books');
+        const usersCol = db.collection('user');
         app.get('/books', async (req, res) => {
             try {
                 const { search, status, sort } = req.query;
@@ -274,6 +275,43 @@ async function run() {
             } catch (error) {
                 console.error("DELETE /books/:id failed:", error);
                 res.status(500).json({ success: false, message: "Failed to delete book" });
+            }
+        });
+
+        // UPDATE USER
+        app.patch("/users/:id", async (req, res) => {
+            try {
+                // Not using verifyToken for now because frontend might not send a token when calling this from a server action or client.
+                const id = req.params.id;
+                const { name, email } = req.body;
+                
+                const updateDoc = { $set: { name, email } };
+                
+                // Construct a flexible filter because better-auth can use string id, string _id, or ObjectId depending on setup.
+                let objectIdMatch = null;
+                if (ObjectId.isValid(id) && (String(new ObjectId(id)) === id)) {
+                    objectIdMatch = new ObjectId(id);
+                }
+                
+                const filter = {
+                    $or: [
+                        { _id: id },
+                        { id: id }
+                    ]
+                };
+                if (objectIdMatch) {
+                    filter.$or.push({ _id: objectIdMatch });
+                }
+
+                const result = await usersCol.updateOne(filter, updateDoc);
+                
+                if (result.matchedCount === 0) {
+                    return res.status(404).json({ success: false, message: "User not found" });
+                }
+                res.json({ success: true, modifiedCount: result.modifiedCount });
+            } catch (error) {
+                console.error("PATCH /users/:id failed:", error);
+                res.status(500).json({ success: false, message: "Failed to update user" });
             }
         });
         const upload = multer({ storage: multer.memoryStorage() });
