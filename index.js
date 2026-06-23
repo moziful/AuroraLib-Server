@@ -75,9 +75,36 @@ async function run() {
         const db = client.db('AuroraLib');
         const allBooks = db.collection('books');
         app.get('/books', async (req, res) => {
-            const cursor = allBooks.find();
-            const result = await cursor.toArray();
-            res.send(result);
+            try {
+                const { search, status, sort } = req.query;
+                let query = {};
+                if (search) {
+                    query.$or = [
+                        { title: { $regex: search, $options: 'i' } },
+                        { writerName: { $regex: search, $options: 'i' } },
+                        { genre: { $regex: search, $options: 'i' } }
+                    ];
+                }
+                if (status && status !== 'all') {
+                    query.status = status;
+                }
+                let sortOptions = { createdAt: -1 }; // default newest
+                if (sort === 'price_low') {
+                    sortOptions = { price: 1 };
+                } else if (sort === 'price_high') {
+                    sortOptions = { price: -1 };
+                } else if (sort === 'newest') {
+                    sortOptions = { createdAt: -1 };
+                } else if (sort === 'oldest') {
+                    sortOptions = { createdAt: 1 };
+                }
+                const cursor = allBooks.find(query).sort(sortOptions);
+                const result = await cursor.toArray();
+                res.send(result);
+            } catch (error) {
+                console.error("Error fetching books:", error);
+                res.status(500).json({ message: "Server error fetching books" });
+            }
         });
         app.get('/books/email/:email', async (req, res) => {
             try {
