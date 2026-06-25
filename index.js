@@ -319,6 +319,50 @@ async function run() {
                 res.status(500).json({ success: false, message: "Failed to update user" });
             }
         });
+        
+// ---------------------------------------------------------------------
+// PATCH: Self‑assign role (reader → writer) after signup
+// ---------------------------------------------------------------------
+app.patch("/users/:id/role", verifyToken, async (req, res) => {
+  try {
+    const userId = req.params.id;
+    const { role } = req.body;
+    if (!["writer", "reader"].includes(role)) {
+      return res.status(400).json({ success: false, message: "Invalid role value" });
+    }
+
+    // Ensure the requester is the same user
+    const requesterId = req.user.sub || req.user.id || req.user._id;
+    if (requesterId !== userId) {
+      return res.status(403).json({ success: false, message: "Can only change own role" });
+    }
+
+    // Allow upgrade only if current role is reader (or undefined)
+    if (req.user.role && req.user.role !== "reader") {
+      return res
+        .status(403)
+        .json({ success: false, message: "Only readers can self‑assign a role" });
+    }
+
+    // Flexible filter – same logic used elsewhere for user updates
+    let objectIdMatch = null;
+    if (ObjectId.isValid(userId) && String(new ObjectId(userId)) === userId) {
+      objectIdMatch = new ObjectId(userId);
+    }
+    const filter = { $or: [{ _id: userId }, { id: userId }] };
+    if (objectIdMatch) filter.$or.push({ _id: objectIdMatch });
+
+    const result = await usersCol.updateOne(filter, { $set: { role } });
+    if (result.matchedCount === 0) {
+      return res.status(404).json({ success: false, message: "User not found" });
+    }
+
+    return res.json({ success: true, modifiedCount: result.modifiedCount });
+  } catch (error) {
+    console.error("PATCH /users/:id/role failed:", error);
+    return res.status(500).json({ success: false, message: "Failed to update role" });
+  }
+});
         const upload = multer({ storage: multer.memoryStorage() });
         app.post('/api/upload-image', upload.single('image'), async (req, res) => {
             try {
