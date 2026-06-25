@@ -233,15 +233,17 @@ async function run() {
         // UPDATE BOOK STATUS
         app.patch("/books/:id/status", verifyToken, async (req, res) => {
             try {
-                if (!req.user || req.user.role !== "writer") {
-                    return res.status(403).json({ success: false, message: "Only writers can update status" });
+                // Allow writers and admins to update status
+                if (!req.user || (req.user.role !== "writer" && req.user.role !== "admin")) {
+                    return res.status(403).json({ success: false, message: "Only writers or admins can update status" });
                 }
                 const id = req.params.id;
                 const filter = { _id: new ObjectId(id) };
-                
+
                 const existingBook = await allBooks.findOne(filter);
                 if (!existingBook) return res.status(404).json({ success: false, message: "Book not found" });
-                if (existingBook.writerEmail !== req.user.email) {
+                // Admins can edit any book; writers only their own
+                if (req.user.role === "writer" && existingBook.writerEmail !== req.user.email) {
                     return res.status(403).json({ success: false, message: "You can only edit your own books" });
                 }
 
