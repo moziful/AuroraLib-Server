@@ -13,6 +13,7 @@
     "jsonwebtoken": "^9.0.3",
     "jwks-rsa": "^4.1.0",
     "mongodb": "^7.3.0",
-    "multer": "^2.2.0"
+    "multer": "^2.2.0",
+    "serverless-http": "^3.0.0"
   }
 }
