@@ -289,15 +289,15 @@ async function run() {
                 // Not using verifyToken for now because frontend might not send a token when calling this from a server action or client.
                 const id = req.params.id;
                 const { name, email } = req.body;
-                
+
                 const updateDoc = { $set: { name, email } };
-                
+
                 // Construct a flexible filter because better-auth can use string id, string _id, or ObjectId depending on setup.
                 let objectIdMatch = null;
                 if (ObjectId.isValid(id) && (String(new ObjectId(id)) === id)) {
                     objectIdMatch = new ObjectId(id);
                 }
-                
+
                 const filter = {
                     $or: [
                         { _id: id },
@@ -309,7 +309,7 @@ async function run() {
                 }
 
                 const result = await usersCol.updateOne(filter, updateDoc);
-                
+
                 if (result.matchedCount === 0) {
                     return res.status(404).json({ success: false, message: "User not found" });
                 }
@@ -319,40 +319,106 @@ async function run() {
                 res.status(500).json({ success: false, message: "Failed to update user" });
             }
         });
-        
-// ---------------------------------------------------------------------
-// PATCH: Self‑assign role (reader → writer) after signup
-// ---------------------------------------------------------------------
-app.patch("/users/:id/role", async (req, res) => {
-  try {
-    const userId = req.params.id;
-    const { role } = req.body;
-    if (!["writer", "reader"].includes(role)) {
-      return res.status(400).json({ success: false, message: "Invalid role value" });
-    }
 
-    // Directly update the role without requester validation
-    // (Assumes the caller is authorized via other means or is a trusted internal call)
+        // ---------------------------------------------------------------------
+        // PATCH: Self‑assign role (reader → writer) after signup
+        // ---------------------------------------------------------------------
+        app.patch("/users/:id/role", async (req, res) => {
+            try {
+                const userId = req.params.id;
+                const { role } = req.body;
+                if (!["writer", "reader"].includes(role)) {
+                    return res.status(400).json({ success: false, message: "Invalid role value" });
+                }
 
-    // Flexible filter – same logic used elsewhere for user updates
-    let objectIdMatch = null;
-    if (ObjectId.isValid(userId) && String(new ObjectId(userId)) === userId) {
-      objectIdMatch = new ObjectId(userId);
-    }
-    const filter = { $or: [{ _id: userId }, { id: userId }] };
-    if (objectIdMatch) filter.$or.push({ _id: objectIdMatch });
+                // Directly update the role without requester validation
+                // (Assumes the caller is authorized via other means or is a trusted internal call)
 
-    const result = await usersCol.updateOne(filter, { $set: { role } });
-    if (result.matchedCount === 0) {
-      return res.status(404).json({ success: false, message: "User not found" });
-    }
+                // Flexible filter – same logic used elsewhere for user updates
+                let objectIdMatch = null;
+                if (ObjectId.isValid(userId) && String(new ObjectId(userId)) === userId) {
+                    objectIdMatch = new ObjectId(userId);
+                }
+                const filter = { $or: [{ _id: userId }, { id: userId }] };
+                if (objectIdMatch) filter.$or.push({ _id: objectIdMatch });
 
-    return res.json({ success: true, modifiedCount: result.modifiedCount });
-  } catch (error) {
-    console.error("PATCH /users/:id/role failed:", error);
-    return res.status(500).json({ success: false, message: "Failed to update role" });
-  }
-});
+                const result = await usersCol.updateOne(filter, { $set: { role } });
+                if (result.matchedCount === 0) {
+                    return res.status(404).json({ success: false, message: "User not found" });
+                }
+
+                return res.json({ success: true, modifiedCount: result.modifiedCount });
+            } catch (error) {
+                console.error("PATCH /users/:id/role failed:", error);
+                return res.status(500).json({ success: false, message: "Failed to update role" });
+            }
+        });
+
+        const transactionsCol = db.collection('transactions');
+        app.post("/purchases", async (req, res) => {
+            try {
+                const { bookId, userEmail } = req.body;
+                if (!bookId || !userEmail) {
+                    return res.status(400).json({ success: false, message: "bookId and userEmail are required." });
+                }
+                const updateRes = await allBooks.updateOne(
+                    { _id: new ObjectId(bookId) },
+                    {
+                        $set: {
+                            status: "Unavailable",
+                            buyerEmail: userEmail,
+                            purchasedAt: new Date().toISOString()
+                        }
+                    }
+                );
+                if (updateRes.matchedCount === 0) {
+                    return res.status(404).json({ success: false, message: "Book not found" });
+                }
+                const book = await allBooks.findOne({ _id: new ObjectId(bookId) });
+                await transactionsCol.insertOne({
+                    bookId: new ObjectId(bookId),
+                    bookName: book.title,
+                    writer: book.writerName,
+                    price: `$${(book.price || 0).toFixed(2)}`,
+                    userEmail: userEmail,
+                    date: new Date().toLocaleDateString("en-US"),
+                    status: "Completed"
+                });
+
+                res.json({ success: true });
+            } catch (error) {
+                console.error("POST /purchases failed:", error);
+                res.status(500).json({ success: false, message: "Failed to purchase book" });
+            }
+        });
+        app.get("/purchases/:email", async (req, res) => {
+            try {
+                const books = await allBooks.find({ buyerEmail: req.params.email }).toArray();
+                res.json(books);
+            } catch (error) {
+                console.error("GET /purchases failed:", error);
+                res.status(500).json({ success: false, message: "Failed to fetch purchased books" });
+            }
+        });
+        app.get("/bookmarks/:email", async (req, res) => {
+            try {
+                const books = await allBooks.find({ bookmarks: req.params.email }).toArray();
+                res.json(books);
+            } catch (error) {
+                console.error("GET /bookmarks failed:", error);
+                res.status(500).json({ success: false, message: "Failed to fetch bookmarked books" });
+            }
+        });
+        app.get("/transactions/:email", async (req, res) => {
+            try {
+                const txs = await transactionsCol.find({ userEmail: req.params.email }).toArray();
+                res.json(txs);
+            } catch (error) {
+                console.error("GET /transactions failed:", error);
+                res.status(500).json({ success: false, message: "Failed to fetch transactions" });
+            }
+        });
+
         const upload = multer({ storage: multer.memoryStorage() });
         app.post('/api/upload-image', upload.single('image'), async (req, res) => {
             try {
