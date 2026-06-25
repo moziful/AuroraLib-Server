@@ -198,16 +198,17 @@ async function run() {
         // UPDATE BOOK DETAILS
         app.put("/books/:id", verifyToken, async (req, res) => {
             try {
-                if (!req.user || req.user.role !== "writer") {
-                    return res.status(403).json({ success: false, message: "Only writers can update books" });
+                // Allow writers and admins to update books
+                if (!req.user || (req.user.role !== "writer" && req.user.role !== "admin")) {
+                    return res.status(403).json({ success: false, message: "Only writers or admins can update books" });
                 }
                 const id = req.params.id;
                 const filter = { _id: new ObjectId(id) };
-                
-                // Verify ownership
+
+                // Verify ownership for writers only
                 const existingBook = await allBooks.findOne(filter);
                 if (!existingBook) return res.status(404).json({ success: false, message: "Book not found" });
-                if (existingBook.writerEmail !== req.user.email) {
+                if (req.user.role === "writer" && existingBook.writerEmail !== req.user.email) {
                     return res.status(403).json({ success: false, message: "You can only edit your own books" });
                 }
 
@@ -260,15 +261,17 @@ async function run() {
         // DELETE BOOK
         app.delete("/books/:id", verifyToken, async (req, res) => {
             try {
-                if (!req.user || req.user.role !== "writer") {
-                    return res.status(403).json({ success: false, message: "Only writers can delete books" });
+                // Allow writers and admins to delete books
+                if (!req.user || (req.user.role !== "writer" && req.user.role !== "admin")) {
+                    return res.status(403).json({ success: false, message: "Only writers or admins can delete books" });
                 }
                 const id = req.params.id;
                 const filter = { _id: new ObjectId(id) };
-                
+
                 const existingBook = await allBooks.findOne(filter);
                 if (!existingBook) return res.status(404).json({ success: false, message: "Book not found" });
-                if (existingBook.writerEmail !== req.user.email) {
+                // Admins can delete any book; writers only their own
+                if (req.user.role === "writer" && existingBook.writerEmail !== req.user.email) {
                     return res.status(403).json({ success: false, message: "You can only delete your own books" });
                 }
 
