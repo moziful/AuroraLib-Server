@@ -418,6 +418,30 @@ async function run() {
                 res.status(500).json({ success: false, message: "Failed to fetch transactions" });
             }
         });
+        app.post("/bookmarks/toggle", async (req, res) => {
+            try {
+                const { bookId, userEmail } = req.body;
+                if (!bookId || !userEmail) {
+                    return res.status(400).json({ success: false, message: "bookId and userEmail are required." });
+                }
+                const book = await allBooks.findOne({ _id: new ObjectId(bookId) });
+                if (!book) {
+                    return res.status(404).json({ success: false, message: "Book not found" });
+                }
+                const bookmarks = book.bookmarks || [];
+                const isBookmarked = bookmarks.includes(userEmail);
+                if (isBookmarked) {
+                    await allBooks.updateOne({ _id: new ObjectId(bookId) }, { $pull: { bookmarks: userEmail } });
+                    res.json({ success: true, bookmarked: false });
+                } else {
+                    await allBooks.updateOne({ _id: new ObjectId(bookId) }, { $addToSet: { bookmarks: userEmail } });
+                    res.json({ success: true, bookmarked: true });
+                }
+            } catch (error) {
+                console.error("POST /bookmarks/toggle failed:", error);
+                res.status(500).json({ success: false, message: "Failed to toggle bookmark" });
+            }
+        });
 
         const upload = multer({ storage: multer.memoryStorage() });
         app.post('/api/upload-image', upload.single('image'), async (req, res) => {
