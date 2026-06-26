@@ -379,10 +379,12 @@ async function run() {
                     bookId: new ObjectId(bookId),
                     bookName: book.title,
                     writer: book.writerName,
+                    writerEmail: book.writerEmail,
                     price: `$${(book.price || 0).toFixed(2)}`,
                     userEmail: userEmail,
                     date: new Date().toLocaleDateString("en-US"),
-                    status: "Completed"
+                    status: "Completed",
+                    type: "purchase"
                 });
 
                 res.json({ success: true });
@@ -416,6 +418,24 @@ async function run() {
             } catch (error) {
                 console.error("GET /transactions failed:", error);
                 res.status(500).json({ success: false, message: "Failed to fetch transactions" });
+            }
+        });
+        app.get("/transactions", async (req, res) => {
+            try {
+                const transactions = await transactionsCol.find({}).sort({ date: -1 }).toArray();
+                res.status(200).json(transactions);
+            } catch (error) {
+                console.error("Error fetching transactions:", error);
+                res.status(500).json({ message: "Internal Server Error" });
+            }
+        });
+        app.get("/transactions/writer/:email", async (req, res) => {
+            try {
+                const sales = await transactionsCol.find({ writerEmail: req.params.email }).sort({ date: -1 }).toArray();
+                res.status(200).json(sales);
+            } catch (error) {
+                console.error("Error fetching writer sales:", error);
+                res.status(500).json({ message: "Internal Server Error" });
             }
         });
         app.post("/bookmarks/toggle", async (req, res) => {
