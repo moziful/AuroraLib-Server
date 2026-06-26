@@ -77,7 +77,7 @@ async function run() {
         const usersCol = db.collection('user');
         app.get('/books', async (req, res) => {
             try {
-                const { search, status, sort } = req.query;
+                const { search, status, sort, genre, minPrice, maxPrice } = req.query;
                 let query = {};
                 if (search) {
                     query.$or = [
@@ -88,6 +88,18 @@ async function run() {
                 }
                 if (status && status !== 'all') {
                     query.status = status;
+                }
+                if (genre && genre !== 'all') {
+                    query.genre = { $regex: `^${genre}$`, $options: 'i' };
+                }
+                if (minPrice || maxPrice) {
+                    query.price = {};
+                    if (minPrice) {
+                        query.price.$gte = parseFloat(minPrice);
+                    }
+                    if (maxPrice) {
+                        query.price.$lte = parseFloat(maxPrice);
+                    }
                 }
                 let sortOptions = { createdAt: -1 }; // default newest
                 if (sort === 'price_low') {
