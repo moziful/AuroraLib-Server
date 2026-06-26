@@ -288,9 +288,12 @@ async function run() {
             try {
                 // Not using verifyToken for now because frontend might not send a token when calling this from a server action or client.
                 const id = req.params.id;
-                const { name, email } = req.body;
+                const { name, email, image } = req.body;
 
-                const updateDoc = { $set: { name, email } };
+                const updateDoc = { $set: {} };
+                if (name !== undefined) updateDoc.$set.name = name;
+                if (email !== undefined) updateDoc.$set.email = email;
+                if (image !== undefined) updateDoc.$set.image = image;
 
                 // Construct a flexible filter because better-auth can use string id, string _id, or ObjectId depending on setup.
                 let objectIdMatch = null;
