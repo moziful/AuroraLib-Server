@@ -140,10 +140,10 @@ async function run() {
 
                 const { role, email } = req.user;
 
-                if (role !== "writer") {
+                if (!["writer", "admin"].includes(role)) {
                     return res.status(403).json({
                         success: false,
-                        message: "Only writers can add books",
+                        message: "Only writers and admins can add books",
                     });
                 }
 
