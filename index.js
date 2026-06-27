@@ -220,19 +220,22 @@ async function run() {
                 // Verify ownership for writers only
                 const existingBook = await allBooks.findOne(filter);
                 if (!existingBook) return res.status(404).json({ success: false, message: "Book not found" });
-                if (req.user.role === "writer" && existingBook.writerEmail !== req.user.email) {
+                if (req.user.role === "writer" && existingBook.writerEmail?.toLowerCase() !== req.user.email?.toLowerCase()) {
                     return res.status(403).json({ success: false, message: "You can only edit your own books" });
                 }
 
-                const { title, description, price, genre, coverImage, status } = req.body;
+                const { title, description, price, genre, coverImage, status, writerName, writerEmail, isFeatured } = req.body;
                 const updateDoc = {
                     $set: {
                         title,
                         description: description || "",
                         price: parseFloat(price) || 0,
                         genre,
-                        coverImage,
+                        coverImage: coverImage || "",
                         status: status || "Available",
+                        writerName: writerName || "",
+                        writerEmail: writerEmail || "",
+                        isFeatured: Boolean(isFeatured),
                     },
                 };
                 const result = await allBooks.updateOne(filter, updateDoc);
